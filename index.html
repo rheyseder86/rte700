@@ -1,1 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chegadas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      background-color: #1c1c1e;
+      color: #f2f2f7;
+      font-family: monospace;
+    }
+    .terminal {
+      background-color: #2c2c2e;
+      padding: 1rem;
+      height: 400px;
+      overflow-y: scroll;
+      border: 1px solid #3a3a3c;
+      margin-bottom: 1rem;
+      color: #f2f2f7;
+      font-size: 0.9rem;
+    }
+    .input-row {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: #1c1c1e;
+      padding: 0.5rem;
+      border-top: 1px solid #3a3a3c;
+      z-index: 1000;
+    }
+    .input-row input {
+      font-family: monospace;
+      font-size: 0.8rem;
+      margin-bottom: 0.3rem;
+    }
+    .btn-ios {
+      border-radius: 1rem;
+      font-weight: 600;
+    }
+    .linha-registro {
+      padding: 4px;
+      border-radius: 5px;
+    }
+    .linha-registro:hover {
+      background-color: #444;
+    }
+    .linha-selecionada {
+      background-color: #5c5c61 !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <h4 class="text-center mt-2" style="color:#f2f2f7;">Chegada RTE700</h4>
+
+    <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por CV ou Motorista" oninput="atualizarTerminal()" />
+
+    <div id="terminal" class="terminal"></div>
+
+    <div class="input-row row gx-2">
+      <div class="col"><input type="date" id="data" class="form-control form-control-sm"></div>
+      <div class="col"><input type="time" id="hora" class="form-control form-control-sm" placeholder="Hora"></div>
+      <div class="col"><input type="text" id="cv" class="form-control form-control-sm" placeholder="CV"></div>
+      <div class="col"><input type="text" id="rb" class="form-control form-control-sm" placeholder="RB"></div>
+      <div class="col"><input type="text" id="motorista" class="form-control form-control-sm" placeholder="Motorista"></div>
+      <div class="col"><input type="text" id="origem" class="form-control form-control-sm" placeholder="Origem"></div>
+      <div class="col-auto">
+        <button class="btn btn-success btn-sm btn-ios" onclick="salvarRegistro()">Salvar</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-warning btn-sm btn-ios" onclick="editarSelecionado()">Editar</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionado()">Excluir</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirTXT()">.TXT</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirExcel()">.XLSX</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-light btn-sm btn-ios" onclick="limparCampos()">Limpar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let registros = JSON.parse(localStorage.getItem('registros')) || [];
+    let registroSelecionado = null;
+
+    function atualizarTerminal() {
+      const terminal = document.getElementById('terminal');
+      const filtro = document.getElementById('pesquisa').value.toLowerCase();
+
+      terminal.innerHTML = registros
+        .map((r, i) => ({ ...r, index: i }))
+        .filter(r =>
+          !filtro ||
+          r.cv.toLowerCase().includes(filtro) ||
+          r.motorista.toLowerCase().includes(filtro)
+        )
+        .map(r => `
+          <div 
+            class="linha-registro ${registroSelecionado === r.index ? 'linha-selecionada' : ''}" 
+            onclick="selecionarRegistro(${r.index})"
+            style="cursor:pointer;"
+          >
+            #${r.index + 1} - ${r.data} ${r.hora} | CV: ${r.cv} | RB: ${r.rb} | Motorista: ${r.motorista} | Origem: ${r.origem}
+          </div>
+        `)
+        .join('');
+
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function selecionarRegistro(index) {
+      const r = registros[index];
+      registroSelecionado = index;
+      Object.keys(r).forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.value = r[id];
+      });
+      atualizarTerminal();
+    }
+
+    function salvarRegistro() {
+      const data = document.getElementById('data').value;
+      const hora = document.getElementById('hora').value;
+      const cv = document.getElementById('cv').value.trim();
+      const rb = document.getElementById('rb').value.trim();
+      const motorista = document.getElementById('motorista').value.trim();
+      const origem = document.getElementById('origem').value.trim();
+
+      if (!data || !hora || !cv || !rb || !motorista || !origem) {
+        alert("Preencha todos os campos antes de salvar.");
+        return;
+      }
+
+      const novo = { data, hora, cv, rb, motorista, origem };
+      registros.push(novo);
+      localStorage.setItem('registros', JSON.stringify(registros));
+      limparCampos(false);
+      atualizarTerminal();
+    }
+
+    function editarSelecionado() {
+      if (registroSelecionado === null) {
+        alert("Selecione uma linha clicando no terminal.");
+        return;
+      }
+      registros[registroSelecionado] = {
+        data: document.getElementById('data').value,
+        hora: document.getElementById('hora').value,
+        cv: document.getElementById('cv').value,
+        rb: document.getElementById('rb').value,
+        motorista: document.getElementById('motorista').value,
+        origem: document.getElementById('origem').value,
+      };
+      localStorage.setItem('registros', JSON.stringify(registros));
+      atualizarTerminal();
+    }
+
+    function excluirSelecionado() {
+      if (registroSelecionado === null) {
+        alert("Selecione uma linha clicando no terminal.");
+        return;
+      }
+      if (confirm(`Deseja excluir o registro #${registroSelecionado + 1}?`)) {
+        registros.splice(registroSelecionado, 1);
+        localStorage.setItem('registros', JSON.stringify(registros));
+        limparCampos(false);
+        atualizarTerminal();
+      }
+    }
+
+    function limparCampos(confirmar = true) {
+      if (confirmar && (registroSelecionado !== null || document.querySelector('#data').value !== '')) {
+        if (!confirm("Deseja realmente limpar os campos?")) return;
+      }
+      document.querySelectorAll('.input-row input').forEach(i => i.value = '');
+      registroSelecionado = null;
+      atualizarTerminal();
+    }
+
+    function emitirTXT() {
+      const texto = registros.map((r, i) =>
+        `#${i+1} - ${r.data} ${r.hora} | CV: ${r.cv} | RB: ${r.rb} | Motorista: ${r.motorista} | Origem: ${r.origem}`
+      ).join('\n');
+      const blob = new Blob([texto], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'frotas.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function emitirExcel() {
+      const headers = ["data", "hora", "cv", "rb", "motorista", "origem"];
+      const dadosOrdenados = registros.map(r => {
+        let obj = {};
+        headers.forEach(h => obj[h] = r[h]);
+        return obj;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dadosOrdenados);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Frotas");
+      XLSX.writeFile(wb, "frotas.xlsx");
+    }
+
+    atualizarTerminal();
+  </script>
+</body>
+</html>
 

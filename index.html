@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cliente Retira</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <title>Cliente Retir</title> <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
@@ -57,46 +56,41 @@
       border-radius: 1rem;
       font-weight: 600;
     }
+    /* Estilo para a caixa de seleção */
+    .checkbox-col {
+      width: 30px; /* Largura fixa para a coluna do checkbox */
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <div class="container-fluid">
-    <h4 class="text-center mt-2">Retira</h4>
-
-    <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por Nome, CPF ou Modelo" oninput="atualizarTerminal()" />
+    <h4 class="text-center mt-2">Cliente Retir</h4> <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por Placa / CPF ou Nome" oninput="atualizarTerminal()" />
 
     <div class="terminal">
       <table id="tabela-registros" class="table table-dark table-sm table-hover">
         <thead>
           <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" id="selecionarTodos" onclick="toggleSelecionarTodos(this)" />
+            </th>
             <th>#</th>
             <th>Data</th>
-            <th>Hora</th>
-            <th>Placa / CPF</th>
-            <th>Modelo</th>
-            <th>Nome</th>
-            <th>Observações</th>
-          </tr>
+            <th>Hora</th> <th>Placa / CPF</th> <th>Modelo</th> <th>Nome</th> <th>Setor</th> <th>Observações</th> </tr>
         </thead>
         <tbody id="corpo-registros"></tbody>
       </table>
     </div>
 
     <div class="input-row row gx-2">
-      <div class="col"><input type="date" id="data" class="form-control form-control-sm" placeholder="Data"></div>
-      <div class="col"><input type="time" id="hora" class="form-control form-control-sm" placeholder="Hora"></div>
-      <div class="col"><input type="text" id="cpf" class="form-control form-control-sm" placeholder="Placa / CPF"></div>
-      <div class="col"><input type="text" id="modelo" class="form-control form-control-sm" placeholder="Modelo"></div>
-      <div class="col"><input type="text" id="nome" class="form-control form-control-sm" placeholder="Nome"></div>
-      <div class="col"><input type="text" id="obs" class="form-control form-control-sm" placeholder="Observações"></div>
-      <div class="col-auto">
+      <div class="col"><input type="time" id="horaInput" class="form-control form-control-sm" placeholder="Hora"></div> <div class="col"><input type="text" id="placaCpf" class="form-control form-control-sm" placeholder="Placa / CPF" oninput="autocompletarCampos(this.value)"></div> <div class="col"><input type="text" id="modelo" class="form-control form-control-sm" placeholder="Modelo"></div> <div class="col"><input type="text" id="nome" class="form-control form-control-sm" placeholder="Nome"></div> <div class="col"><input type="text" id="setor" class="form-control form-control-sm" placeholder="Setor"></div> <div class="col-3"><input type="text" id="observacoes" class="form-control form-control-sm" placeholder="Observações"></div> <div class="col-auto">
         <button class="btn btn-success btn-sm btn-ios" onclick="salvarRegistro()">Salvar</button>
       </div>
       <div class="col-auto">
         <button class="btn btn-warning btn-sm btn-ios" onclick="editarSelecionado()">Editar</button>
       </div>
       <div class="col-auto">
-        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionado()">Excluir</button>
+        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionados()">Excluir Selecionados</button>
       </div>
       <div class="col-auto">
         <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirTXT()">.TXT</button>
@@ -111,56 +105,142 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'registros_pessoais_rte700';
+    const STORAGE_KEY = 'cliente_retir_data'; // Chave de armazenamento alterada
     let registros = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    let registroSelecionado = null;
+    let registroSelecionadoIndex = null; 
+
+    function formatarDataParaExibicao(timestamp) {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      const dia = String(date.getDate()).padStart(2, '0');
+      const mes = String(date.getMonth() + 1).padStart(2, '0');
+      const ano = date.getFullYear();
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    function criarTimestampHojeComHora(horaString) {
+      if (!horaString) return null; 
+      const now = new Date();
+      const [hours, minutes] = horaString.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) return null; 
+      now.setHours(hours, minutes, 0, 0); 
+      return now.getTime();
+    }
+
+    // Função de autocompletar
+    function autocompletarCampos(placaCpfDigitada) {
+      if (placaCpfDigitada.length < 3) { // Começa a autocompletar com pelo menos 3 caracteres
+        // Se o campo for esvaziado, limpa os campos autocompletados
+        if (placaCpfDigitada === '') {
+            document.getElementById('modelo').value = '';
+            document.getElementById('nome').value = '';
+            document.getElementById('setor').value = '';
+        }
+        return;
+      }
+
+      const match = registros.find(r => r.placaCpf.toLowerCase().includes(placaCpfDigitada.toLowerCase()));
+      if (match) {
+        // Preenche os campos se encontrar uma correspondência
+        document.getElementById('modelo').value = match.modelo;
+        document.getElementById('nome').value = match.nome;
+        document.getElementById('setor').value = match.setor;
+      } else {
+        // Se não encontrar correspondência, limpa os campos para nova entrada
+        document.getElementById('modelo').value = '';
+        document.getElementById('nome').value = '';
+        document.getElementById('setor').value = '';
+      }
+    }
 
     function atualizarTerminal() {
       const filtro = document.getElementById('pesquisa').value.toLowerCase();
       const corpo = document.getElementById('corpo-registros');
 
-      corpo.innerHTML = registros
-        .map((r, i) => ({ ...r, index: i }))
+      // Ordena os registros pela Hora em sentido horário (crescente)
+      const registrosOrdenados = [...registros].sort((a, b) => a.ordemTimestamp - b.ordemTimestamp);
+
+      corpo.innerHTML = registrosOrdenados
         .filter(r =>
           !filtro ||
-          r.nome.toLowerCase().includes(filtro) ||
-          r.cpf.toLowerCase().includes(filtro) ||
-          r.modelo.toLowerCase().includes(filtro)
+          r.placaCpf.toLowerCase().includes(filtro) ||
+          r.nome.toLowerCase().includes(filtro)
         )
-        .map(r => `
-          <tr class="${registroSelecionado === r.index ? 'linha-selecionada' : ''}" onclick="selecionarRegistro(${r.index})" style="cursor:pointer;">
-            <td>${r.index + 1}</td>
-            <td>${r.data}</td>
-            <td>${r.hora}</td>
-            <td>${r.cpf}</td>
-            <td>${r.modelo}</td>
-            <td>${r.nome}</td>
-            <td>${r.obs}</td>
-          </tr>
-        `)
+        .map((r, i) => {
+          // Achar o índice original de forma mais robusta
+          const originalIndex = registros.findIndex(reg => reg.timestamp === r.timestamp && reg.placaCpf === r.placaCpf); 
+          const dataExibicao = formatarDataParaExibicao(r.timestamp);
+
+          return `
+            <tr class="${registroSelecionadoIndex === originalIndex ? 'linha-selecionada' : ''}">
+              <td class="checkbox-col">
+                <input type="checkbox" class="selecao-item" data-index="${originalIndex}" />
+              </td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${i + 1}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${dataExibicao}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.hora}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.placaCpf}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.modelo}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.nome}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.setor}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.observacoes}</td>
+            </tr>
+          `;
+        })
         .join('');
+
+      const selecionarTodosCheckbox = document.getElementById('selecionarTodos');
+      if (selecionarTodosCheckbox) {
+          const checkboxes = document.querySelectorAll('.selecao-item');
+          const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+          selecionarTodosCheckbox.checked = allChecked && checkboxes.length > 0;
+          selecionarTodosCheckbox.indeterminate = !allChecked && Array.from(checkboxes).some(cb => cb.checked);
+      }
     }
 
     function selecionarRegistro(index) {
+      registroSelecionadoIndex = index;
       const r = registros[index];
-      registroSelecionado = index;
-      document.getElementById('data').value = r.data || '';
-      document.getElementById('hora').value = r.hora || '';
-      document.getElementById('cpf').value = r.cpf || '';
-      document.getElementById('modelo').value = r.modelo || '';
-      document.getElementById('nome').value = r.nome || '';
-      document.getElementById('obs').value = r.obs || '';
-      atualizarTerminal();
+
+      document.getElementById('horaInput').value = r.hora; 
+      document.getElementById('placaCpf').value = r.placaCpf;
+      document.getElementById('modelo').value = r.modelo;
+      document.getElementById('nome').value = r.nome;
+      document.getElementById('setor').value = r.setor;
+      document.getElementById('observacoes').value = r.observacoes;
+
+      atualizarTerminal(); 
     }
 
     function salvarRegistro() {
+      const hora = document.getElementById('horaInput').value.trim();
+      const placaCpf = document.getElementById('placaCpf').value.trim();
+      
+      if (!hora) {
+        alert("O campo 'Hora' é obrigatório.");
+        return;
+      }
+      if (!placaCpf) {
+        alert("O campo 'Placa / CPF' é obrigatório.");
+        return;
+      }
+
+      let ordemTimestamp = criarTimestampHojeComHora(hora);
+
+      if (!ordemTimestamp) { 
+          alert("Não foi possível determinar um horário válido para ordenação. Verifique a Hora.");
+          return;
+      }
+
       const novo = {
-        data: document.getElementById('data').value,
-        hora: document.getElementById('hora').value,
-        cpf: document.getElementById('cpf').value.trim(),
-        modelo: document.getElementById('modelo').value.trim(),
+        timestamp: new Date().getTime(), // Data e hora de criação do registro
+        ordemTimestamp: ordemTimestamp, // Hora para ordenação
+        hora: hora,
+        placaCpf: placaCpf,
+        modelo: document.getElementById('modelo').value.trim(), 
         nome: document.getElementById('nome').value.trim(),
-        obs: document.getElementById('obs').value.trim()
+        setor: document.getElementById('setor').value.trim(),
+        observacoes: document.getElementById('observacoes').value.trim()
       };
 
       registros.push(novo);
@@ -170,31 +250,61 @@
     }
 
     function editarSelecionado() {
-      if (registroSelecionado === null) {
-        alert("Selecione uma linha clicando na tabela.");
+      if (registroSelecionadoIndex === null) {
+        alert("Selecione uma linha clicando na tabela para editar.");
         return;
       }
 
-      registros[registroSelecionado] = {
-        data: document.getElementById('data').value,
-        hora: document.getElementById('hora').value,
-        cpf: document.getElementById('cpf').value.trim(),
+      const hora = document.getElementById('horaInput').value.trim();
+      const placaCpf = document.getElementById('placaCpf').value.trim();
+
+      if (!hora) {
+        alert("O campo 'Hora' é obrigatório para edição.");
+        return;
+      }
+      if (!placaCpf) {
+        alert("O campo 'Placa / CPF' é obrigatório para edição.");
+        return;
+      }
+
+      let ordemTimestamp = criarTimestampHojeComHora(hora);
+      
+      if (!ordemTimestamp) { 
+          alert("Não foi possível determinar um horário válido para ordenação. Verifique a Hora.");
+          return;
+      }
+
+      registros[registroSelecionadoIndex] = {
+        timestamp: new Date().getTime(), 
+        ordemTimestamp: ordemTimestamp, 
+        hora: hora,
+        placaCpf: placaCpf,
         modelo: document.getElementById('modelo').value.trim(),
         nome: document.getElementById('nome').value.trim(),
-        obs: document.getElementById('obs').value.trim()
+        setor: document.getElementById('setor').value.trim(),
+        observacoes: document.getElementById('observacoes').value.trim()
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
       atualizarTerminal();
     }
 
-    function excluirSelecionado() {
-      if (registroSelecionado === null) {
-        alert("Selecione uma linha clicando na tabela.");
+    function excluirSelecionados() {
+      const checkboxes = document.querySelectorAll('.selecao-item:checked');
+      if (checkboxes.length === 0) {
+        alert("Nenhum item selecionado para exclusão.");
         return;
       }
-      if (confirm(`Deseja excluir o registro #${registroSelecionado + 1}?`)) {
-        registros.splice(registroSelecionado, 1);
+
+      if (confirm(`Deseja excluir ${checkboxes.length} registro(s) selecionado(s)?`)) {
+        const indicesParaExcluir = Array.from(checkboxes)
+          .map(cb => parseInt(cb.dataset.index))
+          .sort((a, b) => b - a); 
+
+        indicesParaExcluir.forEach(index => {
+          registros.splice(index, 1);
+        });
+
         localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
         limparCampos(false);
         atualizarTerminal();
@@ -202,43 +312,74 @@
     }
 
     function limparCampos(confirmar = true) {
-      if (confirmar && (registroSelecionado !== null || document.querySelector('#nome').value !== '')) {
+      if (confirmar && (registroSelecionadoIndex !== null || document.getElementById('placaCpf').value !== '')) {
         if (!confirm("Deseja realmente limpar os campos?")) return;
       }
       document.querySelectorAll('.input-row input').forEach(i => i.value = '');
-      registroSelecionado = null;
+      registroSelecionadoIndex = null;
+      document.getElementById('selecionarTodos').checked = false;
       atualizarTerminal();
     }
 
+    function toggleSelecionarTodos(source) {
+      const checkboxes = document.querySelectorAll('.selecao-item');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = source.checked;
+      });
+    }
+
     function emitirTXT() {
-      const texto = registros.map((r, i) =>
-        `#${i + 1} ${r.data} ${r.hora} ${r.cpf} ${r.modelo} ${r.nome} ${r.obs}`
-      ).join('\n');
+      const texto = registros.map((r, i) => {
+        const dataExibicao = formatarDataParaExibicao(r.timestamp);
+        return `#${i + 1} ${dataExibicao} Hora: ${r.hora || '-'} Placa/CPF: ${r.placaCpf || '-'} Modelo: ${r.modelo || '-'} Nome: ${r.nome || '-'} Setor: ${r.setor || '-'} Observações: ${r.observacoes || '-'}`;
+      }).join('\n');
 
       const blob = new Blob([texto], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'registros.txt';
+      a.download = 'cliente_retir_registros.txt'; 
       a.click();
       URL.revokeObjectURL(url);
     }
 
     function emitirExcel() {
-      const headers = ["data", "hora", "cpf", "modelo", "nome", "obs"];
-      const dadosOrdenados = registros.map(r => {
-        let obj = {};
-        headers.forEach(h => obj[h] = r[h]);
-        return obj;
+      const headers = [
+        "Data", "Hora", "Placa / CPF", "Modelo", "Nome", "Setor", "Observações"
+      ];
+      
+      const dadosParaExcel = registros.map(r => {
+        const dataExibicao = formatarDataParaExibicao(r.timestamp);
+        return {
+          "Data": dataExibicao,
+          "Hora": r.hora,
+          "Placa / CPF": r.placaCpf,
+          "Modelo": r.modelo,
+          "Nome": r.nome,
+          "Setor": r.setor,
+          "Observações": r.observacoes
+        };
       });
 
-      const ws = XLSX.utils.json_to_sheet(dadosOrdenados);
+      const ws = XLSX.utils.json_to_sheet(dadosParaExcel, { header: headers });
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Registros");
-      XLSX.writeFile(wb, "registros.xlsx");
+      XLSX.utils.book_append_sheet(wb, ws, "Cliente Retir Registros"); 
+      XLSX.writeFile(wb, "cliente_retir_registros.xlsx"); 
     }
 
+    // Inicializa a exibição da tabela ao carregar a página
     atualizarTerminal();
+
+    // Adiciona listener para desmarcar "selecionar todos" se algum item for desmarcado individualmente
+    document.getElementById('corpo-registros').addEventListener('change', (event) => {
+        if (event.target.classList.contains('selecao-item')) {
+            const selecionarTodosCheckbox = document.getElementById('selecionarTodos');
+            const checkboxes = document.querySelectorAll('.selecao-item');
+            const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            selecionarTodosCheckbox.checked = checkedCount === checkboxes.length && checkboxes.length > 0;
+            selecionarTodosCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+        }
+    });
   </script>
 </body>
 </html>
